@@ -91,4 +91,4 @@ python -m pytest -q
 
 ## Licencia
 
-MIT
+Business Source License 1.1. Código visible; el uso en producción requiere una licencia KeyFlint (o ser no comercial). Pasa a Apache 2.0 cuatro años después de cada versión. Ver [LICENSE](LICENSE).

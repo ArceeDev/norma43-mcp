@@ -76,7 +76,7 @@
     "gestoria",
     "spain"
   ],
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "compatibility": {
     "platforms": [
       "darwin",
