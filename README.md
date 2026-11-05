@@ -47,6 +47,13 @@ claude mcp add norma43 -e KEYFLINT_LICENSE=LIC-... -- uvx norma43-mcp
 
 Opcionales: `KEYFLINT_URL`, `KEYFLINT_PUBLIC_KEYS` (si no se pone, se descarga del gateway y se guarda en `~/.keyflint/keyring.json`), `KEYFLINT_CHECKOUT_URL`.
 
+## Tarjetas visuales (MCP Apps)
+
+En Claude, ChatGPT, VS Code y Goose cada herramienta de pago y `credits_balance` se muestran como una tarjeta
+interactiva en el chat: saldo de créditos con barra y botón para recargar, o resumen del resultado (cifras clave,
+incidencias, tabla de vista previa y créditos cobrados). Es el recurso `ui://norma43/card.html`, autocontenido y sin
+red. El resto de clientes siguen recibiendo el JSON de siempre.
+
 ## Modo hosted (HTTP, licencia por petición)
 
 ```bash
