@@ -48,7 +48,7 @@ How to recognise Norma 43: fixed 80-character lines that start with `11`, `22`, 
    - `matches` with confidence `alta`: reconciled.
    - `ambiguous`: **ask the user**. Never pick one yourself; the tool returns ties on purpose.
    - `suggestions`: weak candidates for the user to confirm.
-   - `unmatched_bank` / `unmatched_expected`: pending items.
+   - `unmatched_movements` / `unmatched_expected`: pending items.
 
 ## Rules
 
