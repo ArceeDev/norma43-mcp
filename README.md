@@ -19,22 +19,19 @@ Precios configurables: `NORMA43_PRICES="parse_norma43=2,reconcile_movements=5"`.
 
 Importes: cadenas con 2 decimales; negativo = cargo (sale dinero), positivo = abono (entra).
 
-## Dos formas de venderlo
+## Instalación
 
-### 1. Hosted (HTTP, licencia por petición)
+Solo necesitas tu licencia KeyFlint (`LIC-...`). La URL del gateway, su clave pública y el enlace de compra vienen por defecto.
+
+**Claude Desktop, 1 clic:** descarga `norma43-mcp-X.Y.Z.mcpb` de la [última release](https://github.com/ArceeDev/norma43-mcp/releases/latest), ábrelo con doble clic y pega tu licencia. Sin terminal ni JSON.
+
+**Claude Code:**
 
 ```bash
-docker build -t norma43-mcp .
-docker run -p 8080:8080 \
-  -e KEYFLINT_PUBLIC_KEYS=... \
-  -e KEYFLINT_URL=https://keyflint.com \
-  -e KEYFLINT_CHECKOUT_URL=https://.../comprar \
-  norma43-mcp
+claude mcp add norma43 -e KEYFLINT_LICENSE=LIC-... -- uvx norma43-mcp
 ```
 
-El cliente envía `Authorization: Bearer LIC-...` (o `X-License-Key`).
-
-### 2. Local (stdio)
+**Cursor, Windsurf, Claude Desktop (JSON):**
 
 ```json
 {
@@ -42,15 +39,23 @@ El cliente envía `Authorization: Bearer LIC-...` (o `X-License-Key`).
     "norma43": {
       "command": "uvx",
       "args": ["norma43-mcp"],
-      "env": {
-        "KEYFLINT_LICENSE": "LIC-...",
-        "KEYFLINT_PUBLIC_KEYS": "...",
-        "KEYFLINT_CHECKOUT_URL": "https://.../comprar"
-      }
+      "env": { "KEYFLINT_LICENSE": "LIC-..." }
     }
   }
 }
 ```
+
+Opcionales: `KEYFLINT_URL`, `KEYFLINT_PUBLIC_KEYS` (si no se pone, se descarga del gateway y se guarda en `~/.keyflint/keyring.json`), `KEYFLINT_CHECKOUT_URL`.
+
+## Modo hosted (HTTP, licencia por petición)
+
+```bash
+docker build -t norma43-mcp .
+docker run -p 8080:8080 \
+  norma43-mcp
+```
+
+El cliente envía `Authorization: Bearer LIC-...` (o `X-License-Key`).
 
 Variables: `NORMA43_TRANSPORT` (`stdio`|`http`), `NORMA43_PRICES`, `NORMA43_MAX_BYTES` (por defecto 5 MB), `PORT`, `HOST`.
 

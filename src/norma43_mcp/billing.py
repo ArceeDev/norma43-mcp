@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import pathlib
 import threading
 import uuid
 from collections import OrderedDict
@@ -19,6 +20,60 @@ from keyflint_verify.mcp import LICENSE_INVALID, KeyFlint, LicenseError
 
 LICENSE_HEADERS = ("x-license-key", "authorization")
 _MAX_CLIENTS = 1024
+
+DEFAULT_GATEWAY = "https://licenses.keyflint.dev"
+DEFAULT_CHECKOUT = "https://mcp.keyflint.dev/precios/"
+_KEYRING_TTL = 6 * 3600
+
+
+def _env(name: str) -> str:
+    return (os.environ.get("KEYFLINT_" + name) or os.environ.get("KEYFORGE_" + name) or "").strip()
+
+
+def _fetch_keyring(gateway: str) -> str:
+    """Gateway public keyring, cached in ~/.keyflint (stale copy used when offline)."""
+    import hashlib
+    import json
+    import time
+    import urllib.request
+
+    cache = pathlib.Path(os.environ.get("KEYFLINT_KEYRING_CACHE")
+                         or pathlib.Path.home() / ".keyflint" / "keyring.json")
+    slot = hashlib.sha256(gateway.encode()).hexdigest()[:16]
+    try:
+        stored = json.loads(cache.read_text("utf-8"))
+    except (OSError, ValueError):
+        stored = {}
+    entry = stored.get(slot) or {}
+    if entry.get("keyring") and time.time() - float(entry.get("at", 0)) < _KEYRING_TTL:
+        return str(entry["keyring"])
+    try:
+        req = urllib.request.Request(gateway + "/api/v1/licenses/public-key",
+                                     headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310 - https gateway
+            keyring = str(json.loads(resp.read().decode("utf-8"))["data"]["keyring"]).strip()
+    except Exception:  # noqa: BLE001 - offline: fall back to the cached keyring
+        return str(entry.get("keyring") or "")
+    if keyring:
+        try:
+            stored[slot] = {"keyring": keyring, "at": time.time()}
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(stored), "utf-8")
+        except OSError:
+            pass
+    return keyring
+
+
+def apply_defaults() -> None:
+    """Only KEYFLINT_LICENSE is required: gateway, keyring and checkout default to KeyFlint's."""
+    if not _env("URL"):
+        os.environ["KEYFLINT_URL"] = DEFAULT_GATEWAY
+    if not _env("CHECKOUT_URL"):
+        os.environ["KEYFLINT_CHECKOUT_URL"] = DEFAULT_CHECKOUT
+    if not (_env("PUBLIC_KEYS") or _env("PUBLIC_KEY")):
+        keyring = _fetch_keyring(_env("URL").rstrip("/"))
+        if keyring:
+            os.environ["KEYFLINT_PUBLIC_KEYS"] = keyring
 
 
 def license_from_headers(headers: Optional[Mapping[str, str]]) -> Optional[str]:
@@ -39,6 +94,8 @@ class Billing:
 
     def __init__(self, *, hosted: bool = False, **kf_kwargs: Any) -> None:
         self.hosted = hosted
+        if "public_keys" not in kf_kwargs:
+            apply_defaults()
         self._kf_kwargs = kf_kwargs
         self._env_kf = KeyFlint(**kf_kwargs)
         self._clients: "OrderedDict[str, KeyFlint]" = OrderedDict()

@@ -1,0 +1,16 @@
+.git/
+.github/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+dist/
+build/
+*.egg-info/
+Dockerfile
+site/
+distribution/
+skills/
+*.mcpb
+uv.lock

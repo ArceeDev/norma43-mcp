@@ -1,0 +1,99 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "norma43-mcp",
+  "display_name": "Norma 43",
+  "version": "0.1.0",
+  "description": "Extractos bancarios Norma 43 (AEB43/CSB43) a JSON/CSV y conciliación bancaria determinista. Validación de IBAN, NIF y SEPA.",
+  "long_description": "Lee extractos Cuaderno 43 de cualquier banco español, los convierte a JSON o CSV, concilia movimientos con facturas o cobros esperados y valida IBAN, NIF/CIF e identificador de acreedor SEPA. Pago por uso con créditos KeyFlint; la validación de identificadores es gratis.",
+  "author": {
+    "name": "ArceeDev",
+    "url": "https://mcp.keyflint.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArceeDev/norma43-mcp"
+  },
+  "homepage": "https://mcp.keyflint.dev",
+  "support": "https://github.com/ArceeDev/norma43-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/norma43_mcp/__main__.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "--no-dev",
+        "--quiet",
+        "norma43-mcp"
+      ],
+      "env": {
+        "KEYFLINT_LICENSE": "${user_config.license_key}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "parse_norma43",
+      "description": "Read a Spanish Norma 43 (Cuaderno 43 / AEB43 / CSB43) bank statement into structured JSON."
+    },
+    {
+      "name": "norma43_to_csv",
+      "description": "Convert a Norma 43 statement to CSV (one row per movement, with IBAN, running balance and concept names)."
+    },
+    {
+      "name": "reconcile_movements",
+      "description": "Bank reconciliation (conciliación bancaria): match bank movements to expected items, deterministically."
+    },
+    {
+      "name": "validate_identifier",
+      "description": "Validate a Spanish/EU banking identifier. Free."
+    },
+    {
+      "name": "sepa_creditor_id",
+      "description": "Compute the Spanish SEPA creditor identifier (AT-02, 'identificador de acreedor') from a NIF. Free."
+    },
+    {
+      "name": "pricing",
+      "description": "Credit price of each tool and where to buy credits. Free."
+    },
+    {
+      "name": "credits_balance",
+      "description": "Remaining credits on your KeyFlint license. Free."
+    }
+  ],
+  "keywords": [
+    "mcp",
+    "norma43",
+    "aeb43",
+    "csb43",
+    "conciliacion",
+    "banco",
+    "iban",
+    "gestoria",
+    "spain"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "user_config": {
+    "license_key": {
+      "type": "string",
+      "title": "Licencia KeyFlint",
+      "description": "Tu licencia (empieza por LIC-). La recibes al comprar en mcp.keyflint.dev; una sola licencia sirve para todos los MCPs.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}
