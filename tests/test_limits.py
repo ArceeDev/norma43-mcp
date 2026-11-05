@@ -1,9 +1,12 @@
 """Reconciliation at scale: bounded memory, refused oversized inputs, groups found late in big files."""
 from __future__ import annotations
 
-import resource
-
 import pytest
+
+try:
+    import resource
+except ImportError:  # Windows: no ru_maxrss
+    resource = None
 
 from norma43_mcp import reconcile as rc
 
@@ -18,6 +21,7 @@ def _exps(n, cents=5000, refs=True):
                                "reference": f"SOCIO {i:05d}" if refs else ""} for i in range(n)])
 
 
+@pytest.mark.skipif(resource is None, reason="peak RSS needs the POSIX resource module")
 def test_identical_amounts_use_bounded_memory():
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     out = rc.reconcile(_movs(1000), _exps(1000, refs=False), 10, "0", 1, 50)
