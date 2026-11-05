@@ -17,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from . import __version__, ids, n43
+from . import apps
 from .billing import Billing
 from .reconcile import (ReconcileError, build_expected, build_movements, check_options, check_size,
                         movements_from_n43, reconcile)
@@ -56,6 +57,11 @@ mcp = MCPServer(
 )
 
 
+UI = apps.ui_meta("norma43")
+apps.register(mcp, slug="norma43", name="Norma 43", icon="landmark", version=__version__, lang="es",
+              buy_url=lambda: billing.checkout_url,
+              labels={"parse_norma43": "Extracto Norma 43", "norma43_to_csv": "Norma 43 a CSV", "reconcile_movements": "Conciliación bancaria", "credits_balance": "Saldo de créditos"})
+
 @contextmanager
 def _user_errors() -> Iterator[None]:
     """Input problems reach the agent with their message (and, raised before a debit, cost nothing)."""
@@ -86,7 +92,7 @@ async def _read_n43(ctx: Context, content: str, content_base64: str) -> tuple[n4
     return res, encoding
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def parse_norma43(ctx: Context, content: str = "", content_base64: str = "", include_movements: bool = True,
                         max_movements: int = 2000) -> dict[str, Any]:
     """Read a Spanish Norma 43 (Cuaderno 43 / AEB43 / CSB43) bank statement into structured JSON.
@@ -110,7 +116,7 @@ async def parse_norma43(ctx: Context, content: str = "", content_base64: str = "
     return {**out, "encoding": encoding, "billing": _note(receipt, PRICES["parse_norma43"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def norma43_to_csv(ctx: Context, content: str = "", content_base64: str = "", delimiter: str = ";",
                          decimal_comma: bool = True) -> dict[str, Any]:
     """Convert a Norma 43 statement to CSV (one row per movement, with IBAN, running balance and concept names).
@@ -127,7 +133,7 @@ async def norma43_to_csv(ctx: Context, content: str = "", content_base64: str = 
             "errors": errors[:50], "encoding": encoding, "billing": _note(receipt, PRICES["norma43_to_csv"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def reconcile_movements(ctx: Context, expected: list[dict[str, Any]], content: str = "",
                               content_base64: str = "", movements: list[dict[str, Any]] | None = None,
                               date_window_days: int = 10, amount_tolerance: str = "0", max_group_size: int = 4,
@@ -212,7 +218,7 @@ def pricing() -> dict[str, Any]:
             "buy_credits": billing.checkout_url or "Set KEYFLINT_CHECKOUT_URL"}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
 async def credits_balance(ctx: Context) -> dict[str, Any]:
     """Remaining credits on your KeyFlint license. Free."""
     return await billing.balance(_headers(ctx))
