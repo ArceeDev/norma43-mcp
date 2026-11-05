@@ -1,0 +1,74 @@
+name: release
+# Tag vX.Y.Z -> tests -> PyPI (Trusted Publishing, no token) + .mcpb bundle on the GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Versions match the tag
+        run: |
+          V=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          M=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+          test "$V" = "$M" || { echo "pyproject $V != manifest $M"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then test "v$V" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != v$V"; exit 1; }; fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+      - name: Tests
+        run: |
+          uv venv -q .venv
+          uv pip install -q -p .venv -e '.[test]'
+          .venv/bin/pytest -q
+          rm -rf .venv
+      - name: MCP bundle (.mcpb)
+        run: |
+          npx -y @anthropic-ai/mcpb@2.1.2 validate manifest.json
+          mkdir -p bundle
+          npx -y @anthropic-ai/mcpb@2.1.2 pack . "bundle/${{ github.event.repository.name }}-${VERSION}.mcpb"
+      - name: Wheel and sdist
+        run: uv build --out-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: bundle/
+
+  pypi:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out/
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
