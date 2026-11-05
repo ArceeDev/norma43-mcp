@@ -11,6 +11,7 @@ Design rules, in order of priority:
 from __future__ import annotations
 
 import bisect
+import heapq
 import itertools
 import re
 import unicodedata
@@ -23,6 +24,8 @@ from .n43 import ParseResult, fmt_cents
 
 MAX_ITEMS = 5000
 MAX_GROUP_CANDIDATES = 20
+MAX_PAIRS_PER_MOVEMENT = 25
+MAX_CANDIDATE_PAIRS = 2_000_000  # look-alike amount pairs scanned by the 1:1 pass
 COMBINATION_BUDGET = 1_500_000
 GROUP_MIN_SCORE = 60
 _STOP = {
@@ -231,23 +234,38 @@ class Reconciler:
         self._pending_suggestions: list[Pair] = []
 
     # ---- 1:1 -------------------------------------------------------------------------------------
-    def _pairs(self) -> list[Pair]:
-        sorted_e = sorted(self.exps, key=lambda e: e.cents)
-        keys = [e.cents for e in sorted_e]
-        raw: list[tuple[Mov, Exp, int]] = []
+    def _candidates(self, sorted_e: list[Exp], keys: list[int]) -> Iterable[tuple[Mov, Exp, int]]:
         for m in self.movs:
             lo, hi = bisect.bisect_left(keys, m.cents - self.tol), bisect.bisect_right(keys, m.cents + self.tol)
             for e in sorted_e[lo:hi]:
                 days = abs((m.day - e.day).days)
                 if (e.cents > 0) == (m.cents > 0) and e.cents != 0 and days <= self.window:
-                    raw.append((m, e, days))
+                    yield m, e, days
+
+    def _pairs(self) -> list[Pair]:
+        """Scored 1:1 candidates. Memory stays bounded: each movement keeps its best MAX_PAIRS_PER_MOVEMENT."""
+        sorted_e = sorted(self.exps, key=lambda e: e.cents)
+        keys = [e.cents for e in sorted_e]
         n_m: dict[str, int] = {}
         n_e: dict[str, int] = {}
-        for m, e, _ in raw:
+        for m, e, _ in self._candidates(sorted_e, keys):
             n_m[m.id] = n_m.get(m.id, 0) + 1
             n_e[e.id] = n_e.get(e.id, 0) + 1
-        pairs = []
-        for m, e, days in raw:
+        pairs: list[Pair] = []
+        per_m: list[Pair] = []
+        current: Mov | None = None
+
+        def flush() -> None:
+            if len(per_m) > MAX_PAIRS_PER_MOVEMENT:
+                per_m.sort(key=lambda p: (-p.score, p.days, p.e.order))
+                del per_m[MAX_PAIRS_PER_MOVEMENT:]
+            pairs.extend(per_m)
+            per_m.clear()
+
+        for m, e, days in self._candidates(sorted_e, keys):
+            if m is not current:
+                flush()
+                current = m
             diff = abs(m.cents - e.cents)
             score, why = (40, ["importe exacto"]) if diff == 0 else (30, [f"importe con diferencia de {fmt_cents(diff)}"])
             pts, ev = _evidence(e, m)
@@ -258,7 +276,8 @@ class Reconciler:
             if n_m[m.id] == 1 and n_e[e.id] == 1:
                 score += 10
                 why.append("único candidato posible")
-            pairs.append(Pair(m, e, min(score, 100), days, why))
+            per_m.append(Pair(m, e, min(score, 100), days, why))
+        flush()
         pairs.sort(key=lambda p: (-p.score, p.days, p.m.order, p.e.order))
         return pairs
 
@@ -291,18 +310,36 @@ class Reconciler:
 
     # ---- groups ----------------------------------------------------------------------------------
     def _combos(self, target: Any, pool: list[Any], cents_of: Any) -> list[tuple[Any, ...]]:
-        found = []
-        for size in range(2, self.max_group + 1):
-            for combo in itertools.combinations(pool, size):
+        """Subsets of 2..max_group items summing to target (within tolerance), by pruned depth-first search.
+
+        Items share the target's sign and are smaller than it, so sorting by size lets a branch stop as soon
+        as its sum overshoots. Every visited node spends one unit of the shared search budget.
+        """
+        items = sorted(pool, key=lambda x: (abs(cents_of(x)), pool.index(x)))
+        size = [abs(cents_of(x)) for x in items]
+        goal, found, chosen = abs(target), [], []
+        order = {id(x): i for i, x in enumerate(pool)}
+
+        def dfs(start: int, partial: int) -> bool:
+            for i in range(start, len(items)):
+                total = partial + size[i]
+                if total > goal + self.tol:
+                    return False  # sorted: every later item overshoots too
                 self.budget -= 1
                 if self.budget <= 0:
                     self.truncated = True
-                    return found
-                total = sum(cents_of(x) for x in combo)
-                if abs(total - target) <= self.tol:
-                    found.append(combo)
+                    return True
+                chosen.append(items[i])
+                if len(chosen) >= 2 and abs(total - goal) <= self.tol:
+                    found.append(tuple(sorted(chosen, key=lambda x: order[id(x)])))
                     if len(found) > 5:
-                        return found
+                        return True
+                if len(chosen) < self.max_group and dfs(i + 1, total):
+                    return True
+                chosen.pop()
+            return False
+
+        dfs(0, 0)
         return found
 
     def _group_score(self, ev: list[tuple[int, list[str]]], days: int, n: int) -> tuple[int, list[str]]:
@@ -326,8 +363,8 @@ class Reconciler:
                 continue
             pool = [e for e in self.exps if e.id not in self.used_e and (e.cents > 0) == (m.cents > 0)
                     and abs(e.cents) < abs(m.cents) and abs((m.day - e.day).days) <= self.window]
-            pool.sort(key=lambda e: (-_evidence(e, m)[0], abs((m.day - e.day).days), e.order))
-            pool = pool[:MAX_GROUP_CANDIDATES]
+            pool = heapq.nsmallest(MAX_GROUP_CANDIDATES, pool,
+                                   key=lambda e: (-_evidence(e, m)[0], abs((m.day - e.day).days), e.order))
             sols = self._combos(m.cents, pool, lambda e: e.cents)
             self._decide(sols, lambda combo: ([m], list(combo)), "1:N")
 
@@ -338,8 +375,8 @@ class Reconciler:
                 continue
             pool = [m for m in self.movs if m.id not in self.used_m and (e.cents > 0) == (m.cents > 0)
                     and abs(m.cents) < abs(e.cents) and abs((m.day - e.day).days) <= self.window]
-            pool.sort(key=lambda m: (-_evidence(e, m)[0], abs((m.day - e.day).days), m.order))
-            pool = pool[:MAX_GROUP_CANDIDATES]
+            pool = heapq.nsmallest(MAX_GROUP_CANDIDATES, pool,
+                                   key=lambda m: (-_evidence(e, m)[0], abs((m.day - e.day).days), m.order))
             sols = self._combos(e.cents, pool, lambda m: m.cents)
             self._decide(sols, lambda combo: (list(combo), [e]), "N:1")
 
@@ -437,8 +474,20 @@ def check_options(date_window_days: int = 10, amount_tolerance: Any = 0, max_gro
     return window, tol, group, ms
 
 
+def check_size(movs: list[Mov], exps: list[Exp], amount_tolerance: Any = 0) -> None:
+    """Refuse (before any debit) inputs whose look-alike amounts would make the 1:1 pass quadratic."""
+    tol = parse_amount(amount_tolerance or 0, "amount_tolerance")
+    keys = sorted(e.cents for e in exps)
+    n = sum(bisect.bisect_right(keys, m.cents + tol) - bisect.bisect_left(keys, m.cents - tol) for m in movs)
+    if n > MAX_CANDIDATE_PAIRS:
+        raise ReconcileError(f"Too many look-alike amounts: {n} movement/item pairs to compare (max "
+                             f"{MAX_CANDIDATE_PAIRS}). Split the input by month or account, or lower "
+                             "amount_tolerance; nothing was charged.")
+
+
 def reconcile(movs: list[Mov], exps: list[Exp], date_window_days: int = 10, amount_tolerance: Any = 0,
               max_group_size: int = 4, min_score: int = 50) -> dict[str, Any]:
     if not movs:
         raise ReconcileError("No bank movements to reconcile.")
+    check_size(movs, exps, amount_tolerance)
     return Reconciler(movs, exps, *check_options(date_window_days, amount_tolerance, max_group_size, min_score)).run()

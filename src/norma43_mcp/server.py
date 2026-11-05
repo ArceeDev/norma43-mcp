@@ -18,8 +18,8 @@ from mcp.types import ToolAnnotations
 
 from . import __version__, ids, n43
 from .billing import Billing
-from .reconcile import (ReconcileError, build_expected, build_movements, check_options, movements_from_n43,
-                        reconcile)
+from .reconcile import (ReconcileError, build_expected, build_movements, check_options, check_size,
+                        movements_from_n43, reconcile)
 
 DEFAULT_PRICES = {"parse_norma43": 1, "norma43_to_csv": 1, "reconcile_movements": 3}
 MAX_BYTES = int(os.environ.get("NORMA43_MAX_BYTES", 5_000_000))
@@ -170,6 +170,7 @@ async def reconcile_movements(ctx: Context, expected: list[dict[str, Any]], cont
                 source = "norma43 (with integrity errors: run parse_norma43 to see them)"
         if not movs:
             raise ReconcileError("The bank side has no movements; nothing was charged.")
+        check_size(movs, exps, amount_tolerance)
     async with billing.charge(PRICES["reconcile_movements"], "reconcile_movements", _headers(ctx)) as receipt:
         out = await asyncio.to_thread(reconcile, movs, exps, date_window_days, amount_tolerance, max_group_size,
                                       min_score)
