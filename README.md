@@ -1,5 +1,7 @@
 # norma43-mcp
 
+<!-- mcp-name: io.github.ArceeDev/norma43-mcp -->
+
 MCP para **extractos bancarios españoles Norma 43** (Cuaderno 43 / AEB43 / CSB43) y **conciliación bancaria** para agentes de IA. Cobro por créditos con [KeyFlint](https://keyflint.com).
 
 Todos los bancos españoles exportan Norma 43; gestorías y departamentos financieros concilian cada mes. Este servidor lee el fichero como lo valida un banco y cruza movimientos con facturas sin adivinar nunca.
