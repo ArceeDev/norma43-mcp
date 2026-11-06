@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "norma43-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Spanish bank statements (Norma 43 / Cuaderno 43) and bank reconciliation. Billed per call with KeyFlint credits."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "norma43-mcp",
   "display_name": "Norma 43",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Extractos bancarios Norma 43 (AEB43/CSB43) a JSON/CSV y conciliación bancaria determinista. Validación de IBAN, NIF y SEPA.",
   "long_description": "Lee extractos Cuaderno 43 de cualquier banco español, los convierte a JSON o CSV, concilia movimientos con facturas o cobros esperados y valida IBAN, NIF/CIF e identificador de acreedor SEPA. Pago por uso con créditos KeyFlint; la validación de identificadores es gratis.",
   "author": {
