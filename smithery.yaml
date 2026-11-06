@@ -1,0 +1,21 @@
+# Smithery configuration: https://smithery.ai/docs/config#smitheryyaml
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - keyflintLicense
+    properties:
+      keyflintLicense:
+        type: string
+        description: "Your KeyFlint license (LIC-...). Get a free trial at https://mcp.keyflint.dev/probar/"
+  commandFunction: |-
+    (config) => ({
+      command: 'uvx',
+      args: ['norma43-mcp'],
+      env: {
+        KEYFLINT_LICENSE: config.keyflintLicense
+      }
+    })
+  exampleConfig:
+    keyflintLicense: "LIC-COMMUNITY-sample-token"
