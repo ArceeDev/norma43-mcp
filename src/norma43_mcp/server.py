@@ -92,7 +92,7 @@ async def _read_n43(ctx: Context, content: str, content_base64: str) -> tuple[n4
     return res, encoding
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Read Norma 43 bank statement", annotations=LOCAL, meta=UI)
 async def parse_norma43(ctx: Context, content: str = "", content_base64: str = "", include_movements: bool = True,
                         max_movements: int = 2000) -> dict[str, Any]:
     """Read a Spanish Norma 43 (Cuaderno 43 / AEB43 / CSB43) bank statement into structured JSON.
@@ -116,7 +116,7 @@ async def parse_norma43(ctx: Context, content: str = "", content_base64: str = "
     return {**out, "encoding": encoding, "billing": _note(receipt, PRICES["parse_norma43"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Convert Norma 43 to CSV", annotations=LOCAL, meta=UI)
 async def norma43_to_csv(ctx: Context, content: str = "", content_base64: str = "", delimiter: str = ";",
                          decimal_comma: bool = True) -> dict[str, Any]:
     """Convert a Norma 43 statement to CSV (one row per movement, with IBAN, running balance and concept names).
@@ -133,7 +133,7 @@ async def norma43_to_csv(ctx: Context, content: str = "", content_base64: str = 
             "errors": errors[:50], "encoding": encoding, "billing": _note(receipt, PRICES["norma43_to_csv"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Reconcile bank movements with invoices", annotations=LOCAL, meta=UI)
 async def reconcile_movements(ctx: Context, expected: list[dict[str, Any]], content: str = "",
                               content_base64: str = "", movements: list[dict[str, Any]] | None = None,
                               date_window_days: int = 10, amount_tolerance: str = "0", max_group_size: int = 4,
@@ -183,7 +183,7 @@ async def reconcile_movements(ctx: Context, expected: list[dict[str, Any]], cont
     return {"bank_source": source, **out, "billing": _note(receipt, PRICES["reconcile_movements"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(title="Validate Spanish ID or IBAN", annotations=LOCAL)
 def validate_identifier(value: str, kind: str = "auto") -> dict[str, Any]:
     """Validate a Spanish/EU banking identifier. Free.
 
@@ -199,7 +199,7 @@ def validate_identifier(value: str, kind: str = "auto") -> dict[str, Any]:
         return ids.detect_and_validate(value, kind)
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(title="Build SEPA creditor identifier", annotations=LOCAL)
 def sepa_creditor_id(nif: str, business_code: str = "000") -> dict[str, Any]:
     """Compute the Spanish SEPA creditor identifier (AT-02, 'identificador de acreedor') from a NIF. Free.
 
@@ -210,7 +210,7 @@ def sepa_creditor_id(nif: str, business_code: str = "000") -> dict[str, Any]:
         return ids.creditor_identifier(nif, business_code)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(title="Show tool prices", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 def pricing() -> dict[str, Any]:
     """Credit price of each tool and where to buy credits. Free."""
     return {"credits_per_call": {**PRICES, "validate_identifier": 0, "sepa_creditor_id": 0},
@@ -218,7 +218,7 @@ def pricing() -> dict[str, Any]:
             "buy_credits": billing.checkout_url or "Set KEYFLINT_CHECKOUT_URL"}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
+@mcp.tool(title="Check credit balance", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
 async def credits_balance(ctx: Context) -> dict[str, Any]:
     """Remaining credits on your KeyFlint license. Free."""
     return await billing.balance(_headers(ctx))
