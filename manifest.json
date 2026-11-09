@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "norma43-mcp",
   "display_name": "Norma 43",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Extractos bancarios Norma 43 (AEB43/CSB43) a JSON/CSV y conciliación bancaria determinista. Validación de IBAN, NIF y SEPA.",
   "long_description": "Lee extractos Cuaderno 43 de cualquier banco español, los convierte a JSON o CSV, concilia movimientos con facturas o cobros esperados y valida IBAN, NIF/CIF e identificador de acreedor SEPA. Pago por uso con créditos KeyFlint; la validación de identificadores es gratis.",
   "author": {
@@ -47,6 +47,14 @@
     {
       "name": "reconcile_movements",
       "description": "Bank reconciliation (conciliación bancaria): match bank movements to expected items, deterministically."
+    },
+    {
+      "name": "sepa_direct_debits",
+      "description": "Build SEPA direct debit batch (remesa de recibos pain.008, Cuaderno 19.14) XML."
+    },
+    {
+      "name": "sepa_credit_transfers",
+      "description": "Build SEPA credit transfer batch (pain.001, Cuaderno 34.14) XML to pay suppliers or payroll."
     },
     {
       "name": "validate_identifier",
