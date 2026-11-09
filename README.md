@@ -14,6 +14,8 @@ Todos los bancos españoles exportan Norma 43; gestorías y departamentos financ
 | `norma43_to_csv` | 1 | CSV listo para Excel español (`;`, coma decimal), protegido contra inyección de fórmulas. |
 | `reconcile_movements` | 3 | Conciliación 1:1, 1:N (una transferencia paga varias facturas) y N:1 (pagos parciales). Puntuación 0-100, confianza y evidencias. Empates → `ambiguous`. |
 | `validate_identifier` | 0 | IBAN, CCC, NIF/NIE/CIF, identificador de acreedor SEPA, Referencia 1. |
+| `sepa_direct_debits` | 2 | **Remesa de recibos SEPA** (pain.008.001.02, Cuaderno 19.14 XML) para subir al banco: cuotas de la asesoría o recibos de los clientes. Valida cada IBAN, el identificador de acreedor y los mandatos; un recibo erróneo rechaza el fichero entero (gratis). Mismos datos, mismos bytes. |
+| `sepa_credit_transfers` | 2 | **Transferencias SEPA** (pain.001.001.03, Cuaderno 34.14 XML): pagos a proveedores y nóminas en un solo fichero. |
 | `sepa_creditor_id` | 0 | Identificador de acreedor SEPA (AT-02) a partir del NIF. |
 | `pricing`, `credits_balance` | 0 | Precios y saldo de la licencia. |
 

@@ -18,11 +18,13 @@ from mcp.types import ToolAnnotations
 
 from . import __version__, ids, n43
 from . import apps
+from . import sepa
 from .billing import Billing
 from .reconcile import (ReconcileError, build_expected, build_movements, check_options, check_size,
                         movements_from_n43, reconcile)
 
-DEFAULT_PRICES = {"parse_norma43": 1, "norma43_to_csv": 1, "reconcile_movements": 3}
+DEFAULT_PRICES = {"parse_norma43": 1, "norma43_to_csv": 1, "reconcile_movements": 3, "sepa_direct_debits": 2,
+                  "sepa_credit_transfers": 2}
 MAX_BYTES = int(os.environ.get("NORMA43_MAX_BYTES", 5_000_000))
 
 
@@ -49,7 +51,9 @@ mcp = MCPServer(
         "Use `parse_norma43` to read a .n43/.txt/.aeb file into accounts, IBANs, balances and movements with "
         "integrity checks (record 33 totals, opening + movements = closing, record 88 count). "
         "Use `reconcile` to match bank movements against invoices, receipts or ledger entries: it never guesses, "
-        "ties are returned as `ambiguous` for a human. Amounts are strings with 2 decimals; negative = cargo "
+        "ties are returned as `ambiguous` for a human. `sepa_direct_debits` writes a remesa de recibos (pain.008, "
+        "Cuaderno 19.14 XML) and `sepa_credit_transfers` a payment batch (pain.001, Cuaderno 34.14 XML) for upload "
+        "to the bank, checking every IBAN, mandate and total first. Amounts are strings with 2 decimals; negative = cargo "
         "(money out), positive = abono (money in). Free tools: `validate_identifier` (IBAN, CCC, NIF/NIE/CIF, "
         "SEPA creditor id), `sepa_creditor_id`, `pricing`, `credits_balance`. Paid tools cost KeyFlint credits "
         "(see `pricing`); unreadable input is never charged and failures are refunded."
@@ -60,7 +64,7 @@ mcp = MCPServer(
 UI = apps.ui_meta("norma43")
 apps.register(mcp, slug="norma43", name="Norma 43", icon="landmark", version=__version__, lang="es",
               buy_url=lambda: billing.checkout_url,
-              labels={"parse_norma43": "Extracto Norma 43", "norma43_to_csv": "Norma 43 a CSV", "reconcile_movements": "Conciliación bancaria", "credits_balance": "Saldo de créditos"})
+              labels={"parse_norma43": "Extracto Norma 43", "norma43_to_csv": "Norma 43 a CSV", "reconcile_movements": "Conciliación bancaria", "sepa_direct_debits": "Remesa de recibos SEPA", "sepa_credit_transfers": "Transferencias SEPA", "credits_balance": "Saldo de créditos"})
 
 @contextmanager
 def _user_errors() -> Iterator[None]:
@@ -208,6 +212,55 @@ def sepa_creditor_id(nif: str, business_code: str = "000") -> dict[str, Any]:
     """
     with _user_errors():
         return ids.creditor_identifier(nif, business_code)
+
+
+@mcp.tool(title="Build SEPA direct debit batch (remesa de recibos)", annotations=LOCAL, meta=UI)
+async def sepa_direct_debits(ctx: Context, creditor: dict[str, Any], collection_date: str,
+                             debits: list[dict[str, Any]], sequence_type: str = "RCUR", scheme: str = "CORE",
+                             created_at: str = "") -> dict[str, Any]:
+    """Remesa de recibos SEPA: the pain.008.001.02 XML (Cuaderno 19.14) Spanish banks accept for direct debits.
+
+    For despachos collecting monthly fees (cuotas) and for clients that charge their customers by recibo.
+    Every IBAN, the creditor identifier and each mandate are checked first; one wrong recibo refuses the
+    whole file with the reason (free), so a batch never reaches the bank half-wrong. Same input, same bytes.
+
+    Args:
+        creditor: {"name": "Asesoría Pérez SL", "iban": "ES91...", "bic": optional, "creditor_id": "ES12000B..."
+            or "nif": "B12345678" to compute it (business_code optional, default 000)}.
+        collection_date: Requested collection date (YYYY-MM-DD). CORE needs it 1-2 business days ahead.
+        debits: [{"name": "Talleres Ruiz SL", "iban": "ES...", "amount": "60.50", "mandate_id": "CUOTA-0012",
+            "mandate_date": "2024-01-15", "concept": "Cuota marzo 2026", "end_to_end_id": optional,
+            "sequence_type": optional per recibo}].
+        sequence_type: Default for all recibos: RCUR (recurring, default), FRST (first), OOFF (one-off), FNAL.
+        scheme: CORE (consumers and companies, default) or B2B.
+        created_at: Optional YYYY-MM-DDTHH:MM:SS; defaults to collection_date 09:00 so the file is reproducible.
+    """
+    with _user_errors():
+        out = sepa.direct_debits(creditor, collection_date, debits, sequence_type, scheme, created_at)
+    async with billing.charge(PRICES["sepa_direct_debits"], "sepa_direct_debits", _headers(ctx)) as receipt:
+        pass
+    return {**out, "billing": _note(receipt, PRICES["sepa_direct_debits"])}
+
+
+@mcp.tool(title="Build SEPA credit transfer batch", annotations=LOCAL, meta=UI)
+async def sepa_credit_transfers(ctx: Context, debtor: dict[str, Any], execution_date: str,
+                                payments: list[dict[str, Any]], created_at: str = "") -> dict[str, Any]:
+    """Transferencias SEPA: the pain.001.001.03 XML (Cuaderno 34.14) to pay suppliers or payroll in one upload.
+
+    Every IBAN is checked first; one wrong payment refuses the whole file with the reason (free).
+
+    Args:
+        debtor: The paying company {"name", "iban", "bic" optional, "nif" optional}.
+        execution_date: YYYY-MM-DD.
+        payments: [{"name": "Proveedor XYZ SL", "iban": "ES...", "amount": "300.00", "concept": "Fra. 5521",
+            "end_to_end_id": optional, "purpose": optional ISO code, e.g. SALA (nómina) or SUPP (proveedor)}].
+        created_at: Optional YYYY-MM-DDTHH:MM:SS; defaults to execution_date 09:00.
+    """
+    with _user_errors():
+        out = sepa.credit_transfers(debtor, execution_date, payments, created_at)
+    async with billing.charge(PRICES["sepa_credit_transfers"], "sepa_credit_transfers", _headers(ctx)) as receipt:
+        pass
+    return {**out, "billing": _note(receipt, PRICES["sepa_credit_transfers"])}
 
 
 @mcp.tool(title="Show tool prices", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
