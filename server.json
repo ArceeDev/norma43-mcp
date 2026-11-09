@@ -3,7 +3,7 @@
   "name": "io.github.ArceeDev/norma43-mcp",
   "title": "Norma 43",
   "description": "Parse Spanish Norma 43 bank statements, reconcile against invoices, validate IBAN/NIF/SEPA ids.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "websiteUrl": "https://mcp.keyflint.dev",
   "repository": {
     "url": "https://github.com/ArceeDev/norma43-mcp",
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "norma43-mcp",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "transport": {
         "type": "stdio"
       },
