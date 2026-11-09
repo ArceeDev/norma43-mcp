@@ -72,3 +72,22 @@ jobs:
         with:
           files: out/*
           generate_release_notes: true
+mcp-registry:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz | tar -xz
+          sudo mv mcp-publisher /usr/local/bin/
+      - name: Validate server.json
+        run: mcp-publisher validate server.json
+      - name: Login with OIDC
+        run: mcp-publisher login github-oidc
+      - name: Publish to Official MCP Registry
+        run: mcp-publisher publish server.json
