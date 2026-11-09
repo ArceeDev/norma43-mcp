@@ -31,6 +31,8 @@ Get a license with credits: see the `pricing` tool (`buy_credits`).
 | The statement in Excel | `norma43_to_csv` | 1 |
 | To match bank movements with invoices or ledger entries | `reconcile_movements` | 3 |
 | To check an IBAN, CCC, NIF/NIE/CIF, SEPA creditor id | `validate_identifier` | 0 |
+| A remesa de recibos (fees, cuotas) for the bank | `sepa_direct_debits` | 2 |
+| A batch of supplier or payroll transfers | `sepa_credit_transfers` | 2 |
 | A SEPA creditor id (AT-02) from a NIF | `sepa_creditor_id` | 0 |
 | Prices or remaining credits | `pricing`, `credits_balance` | 0 |
 
