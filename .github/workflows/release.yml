@@ -72,7 +72,7 @@ jobs:
         with:
           files: out/*
           generate_release_notes: true
-mcp-registry:
+  mcp-registry:
     needs: build
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
