@@ -46,6 +46,7 @@ class FakeGateway:
     def __init__(self) -> None:
         self.balances: dict[str, int] = {}
         self.debits: dict[tuple[str, str], int] = {}
+        self.refunded: set[tuple[str, str]] = set()
         self.lock = threading.Lock()
         gw = self
 
@@ -74,9 +75,14 @@ class FakeGateway:
                     if key not in gw.balances:
                         return self._unknown()
                     left = gw.balances[key]
+                    cached = False
                     if self.path.endswith("/deduct"):
                         need = int(body["credits"])
-                        if (key, idem) not in gw.debits:
+                        if (key, idem) in gw.refunded:  # like the real ledger: a refunded key is spent
+                            return self._send(409, {"error": {"code": "IDEMPOTENCY_CONFLICT",
+                                                              "message": "Key already refunded."}})
+                        cached = (key, idem) in gw.debits
+                        if not cached:
                             if need > left:
                                 return self._send(402, {"error": {
                                     "code": "QUOTA_EXHAUSTED", "message": "No credits.",
@@ -85,9 +91,10 @@ class FakeGateway:
                             gw.debits[(key, idem)] = need
                     elif self.path.endswith("/refund"):
                         gw.balances[key] += gw.debits.pop((key, idem), 0)
+                        gw.refunded.add((key, idem))
                     else:
                         return self._send(404, {"error": {"code": "NOT_FOUND", "message": self.path}})
-                    self._send(200, {"data": {"remaining_balance": gw.balances[key]}})
+                    self._send(200, {"data": {"remaining_balance": gw.balances[key], "is_cached": cached}})
 
             def log_message(self, *a: object) -> None:
                 pass

@@ -115,7 +115,7 @@ async def parse_norma43(ctx: Context, content: str = "", content_base64: str = "
     """
     res, encoding = await _read_n43(ctx, content, content_base64)
     cap = max(0, min(int(max_movements), 20000))
-    async with billing.charge(PRICES["parse_norma43"], "parse_norma43", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["parse_norma43"], "parse_norma43", _headers(ctx), inputs=locals()) as receipt:
         out = n43.result_dict(res, include_movements, cap)
     return {**out, "encoding": encoding, "billing": _note(receipt, PRICES["parse_norma43"])}
 
@@ -129,7 +129,7 @@ async def norma43_to_csv(ctx: Context, content: str = "", content_base64: str = 
     spreadsheet formula injection. Integrity issues are returned alongside the CSV.
     """
     res, encoding = await _read_n43(ctx, content, content_base64)
-    async with billing.charge(PRICES["norma43_to_csv"], "norma43_to_csv", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["norma43_to_csv"], "norma43_to_csv", _headers(ctx), inputs=locals()) as receipt:
         with _user_errors():
             csv_text = n43.to_csv(res, delimiter, decimal_comma)
     errors = [i for i in res.issues if i["severity"] == "error"]
@@ -181,7 +181,7 @@ async def reconcile_movements(ctx: Context, expected: list[dict[str, Any]], cont
         if not movs:
             raise ReconcileError("The bank side has no movements; nothing was charged.")
         check_size(movs, exps, amount_tolerance)
-    async with billing.charge(PRICES["reconcile_movements"], "reconcile_movements", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["reconcile_movements"], "reconcile_movements", _headers(ctx), inputs=locals()) as receipt:
         out = await asyncio.to_thread(reconcile, movs, exps, date_window_days, amount_tolerance, max_group_size,
                                       min_score)
     return {"bank_source": source, **out, "billing": _note(receipt, PRICES["reconcile_movements"])}
@@ -237,7 +237,7 @@ async def sepa_direct_debits(ctx: Context, creditor: dict[str, Any], collection_
     """
     with _user_errors():
         out = sepa.direct_debits(creditor, collection_date, debits, sequence_type, scheme, created_at)
-    async with billing.charge(PRICES["sepa_direct_debits"], "sepa_direct_debits", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["sepa_direct_debits"], "sepa_direct_debits", _headers(ctx), inputs=locals()) as receipt:
         pass
     return {**out, "billing": _note(receipt, PRICES["sepa_direct_debits"])}
 
@@ -258,7 +258,7 @@ async def sepa_credit_transfers(ctx: Context, debtor: dict[str, Any], execution_
     """
     with _user_errors():
         out = sepa.credit_transfers(debtor, execution_date, payments, created_at)
-    async with billing.charge(PRICES["sepa_credit_transfers"], "sepa_credit_transfers", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["sepa_credit_transfers"], "sepa_credit_transfers", _headers(ctx), inputs=locals()) as receipt:
         pass
     return {**out, "billing": _note(receipt, PRICES["sepa_credit_transfers"])}
 

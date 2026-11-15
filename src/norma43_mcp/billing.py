@@ -3,14 +3,22 @@
 stdio: the license comes from KEYFLINT_LICENSE (one buyer per process).
 HTTP:  the license comes from each request (``Authorization: Bearer LIC-...`` or
 ``X-KeyFlint-License``), so one hosted server bills many buyers.
+
+Retries: a call repeated with the same license, tool, credits and inputs within ``DEDUP_TTL`` seconds
+reuses the first call's idempotency key, so the gateway replays the debit instead of charging twice
+(e.g. the client timed out and retried). A refunded call frees its key, so a retry after a failure is
+billed normally.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 import pathlib
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
@@ -20,6 +28,8 @@ from keyflint_verify.mcp import LICENSE_INVALID, KeyFlint, LicenseError
 
 LICENSE_HEADERS = ("x-license-key", "authorization")
 _MAX_CLIENTS = 1024
+DEDUP_TTL = 300.0
+_MAX_DEDUP = 4096
 
 DEFAULT_GATEWAY = "https://licenses.keyflint.dev"
 DEFAULT_CHECKOUT = "https://mcp.keyflint.dev/precios/"
@@ -100,6 +110,7 @@ class Billing:
         self._env_kf = KeyFlint(**kf_kwargs)
         self._clients: "OrderedDict[str, KeyFlint]" = OrderedDict()
         self._lock = threading.Lock()
+        self._recent: "OrderedDict[str, tuple[str, float]]" = OrderedDict()
 
     @property
     def checkout_url(self) -> Optional[str]:
@@ -129,18 +140,54 @@ class Billing:
                 self._clients.move_to_end(key)
             return kf
 
+    def _idem_key(self, fp: Optional[str]) -> str:
+        """Same fingerprint within DEDUP_TTL -> same key; otherwise a fresh one."""
+        fresh = f"n43-{uuid.uuid4().hex}"
+        if fp is None:
+            return fresh
+        now = time.monotonic()
+        with self._lock:
+            hit = self._recent.get(fp)
+            if hit is not None and now - hit[1] < DEDUP_TTL:
+                return hit[0]
+            self._recent[fp] = (fresh, now)
+            self._recent.move_to_end(fp)
+            while len(self._recent) > _MAX_DEDUP:
+                self._recent.popitem(last=False)
+        return fresh
+
+    def _forget(self, fp: Optional[str], idem: str) -> None:
+        with self._lock:
+            if fp is not None and self._recent.get(fp, ("",))[0] == idem:
+                del self._recent[fp]
+
     @asynccontextmanager
     async def charge(self, credits: int, tool: str, headers: Optional[Mapping[str, str]] = None,
-                     features: Optional[list[str]] = None) -> AsyncIterator[dict[str, Any]]:
-        """Offline license check, debit, run body; refund if the body raises."""
+                     features: Optional[list[str]] = None,
+                     inputs: Optional[Mapping[str, Any]] = None) -> AsyncIterator[dict[str, Any]]:
+        """Offline license check, debit, run body; refund if the body raises.
+
+        ``inputs`` (the tool arguments, e.g. ``locals()``) makes retries idempotent: see module doc.
+        """
         kf = self.client(headers)
         kf.check(features)
-        idem = f"n43-{uuid.uuid4().hex}"
-        receipt = await asyncio.to_thread(kf.deduct, credits, idempotency_key=idem, event_type=f"mcp:{tool}")
+        fp = _fingerprint(getattr(kf, "license_key", ""), tool, credits, inputs)
+        idem = self._idem_key(fp)
+        try:
+            receipt = await asyncio.to_thread(kf.deduct, credits, idempotency_key=idem, event_type=f"mcp:{tool}")
+        except LicenseError as exc:
+            if getattr(exc, "reason", None) != "IDEMPOTENCY_CONFLICT":
+                raise
+            self._forget(fp, idem)  # key was refunded meanwhile: bill this call on its own key
+            idem = self._idem_key(fp)
+            receipt = await asyncio.to_thread(kf.deduct, credits, idempotency_key=idem, event_type=f"mcp:{tool}")
+        replay = bool(receipt.get("is_cached"))
         try:
             yield receipt
         except BaseException:
-            await asyncio.to_thread(kf.refund, idem, "tool_error")
+            if not replay:  # a replay is the first call's paid result; that call refunds its own failure
+                self._forget(fp, idem)
+                await asyncio.to_thread(kf.refund, idem, "tool_error")
             raise
 
     async def balance(self, headers: Optional[Mapping[str, str]] = None) -> dict[str, Any]:
@@ -161,6 +208,34 @@ class Billing:
                 return dict(data.get("data", data))
 
         return await asyncio.to_thread(_get)
+
+
+def _plain(v: Any) -> Any:
+    """JSON-safe copy of tool arguments; drops anything that is not plain data (Context, objects)."""
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return v
+    if isinstance(v, (list, tuple)):
+        return [_plain(x) for x in v]
+    if isinstance(v, Mapping):
+        return {str(k): _plain(x) for k, x in v.items() if not str(k).startswith("_") and _is_plain(x)}
+    return None
+
+
+def _is_plain(v: Any) -> bool:
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return True
+    if isinstance(v, (list, tuple)):
+        return all(_is_plain(x) for x in v)
+    if isinstance(v, Mapping):
+        return all(_is_plain(x) for x in v.values())
+    return False
+
+
+def _fingerprint(license_key: str, tool: str, credits: int, inputs: Optional[Mapping[str, Any]]) -> Optional[str]:
+    if inputs is None:
+        return None
+    blob = json.dumps([license_key, tool, int(credits), _plain(inputs)], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def from_env() -> Billing:

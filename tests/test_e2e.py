@@ -163,3 +163,48 @@ async def test_hosted_mode_requires_license_header(gateway, license_, monkeypatc
         assert receipt["remaining_balance"] >= 0
     with pytest.raises(LicenseError):
         b.client({"X-License-Key": "LIC-forged"}).check()
+
+
+
+async def test_duplicate_call_same_inputs_charges_once(server):
+    """A client retry (same tool, same inputs) inside the dedupe window replays the debit."""
+    price = server.PRICES["parse_norma43"]
+    before = await balance(server)
+    args = dict(content=sample_statement())
+    err1, first, t1 = await call(server, "parse_norma43", **args)
+    err2, second, t2 = await call(server, "parse_norma43", **args)
+    assert not err1 and not err2, (t1, t2)
+    assert await balance(server) == before - price
+    err3, _, t3 = await call(server, "parse_norma43", **{**args, **{"include_movements": False}})
+    assert not err3, t3
+    assert await balance(server) == before - 2 * price  # different inputs are a different call
+
+
+async def test_duplicate_call_after_window_is_charged(server, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("norma43_mcp.billing"), "DEDUP_TTL", 0.0)
+    price = server.PRICES["parse_norma43"]
+    before = await balance(server)
+    args = dict(content=sample_statement())
+    for _ in range(2):
+        err, _, text = await call(server, "parse_norma43", **args)
+        assert not err, text
+    assert await balance(server) == before - 2 * price
+
+
+async def test_retry_after_refunded_failure_is_billed_once(server):
+    b = server.billing
+    before = await balance(server)
+    inputs = {"content": "x"}
+    with pytest.raises(RuntimeError):
+        async with b.charge(3, "parse_norma43", inputs=inputs):
+            raise RuntimeError("tool body failed")
+    assert await balance(server) == before  # refunded
+    async with b.charge(3, "parse_norma43", inputs=inputs) as receipt:
+        assert not receipt.get("is_cached")
+    assert await balance(server) == before - 3
+    # A failing replay of a paid call does not refund the paid one.
+    with pytest.raises(RuntimeError):
+        async with b.charge(3, "parse_norma43", inputs=inputs) as receipt:
+            assert receipt.get("is_cached")
+            raise RuntimeError("retry failed")
+    assert await balance(server) == before - 3
